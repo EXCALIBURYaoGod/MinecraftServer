@@ -1,0 +1,33 @@
+{
+  "name": "ezmc",
+  "version": "1.0.0",
+  "description": "基于 EasyTier 的 Minecraft P2P 联机命令行工具（免提权，免中心服务器）",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "ezmc": "./bin/ezmc.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node bin/ezmc.js",
+    "test": "node --test test/"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "keywords": [
+    "easytier",
+    "minecraft",
+    "p2p",
+    "lan",
+    "vpn",
+    "联机"
+  ]
+}
