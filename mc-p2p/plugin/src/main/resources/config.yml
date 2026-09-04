@@ -1,0 +1,6 @@
+# ez-mc P2P 联机插件配置
+room-name: my-room          # 房主房间名（也是 EasyTier 网络名）
+daemon-url: http://127.0.0.1:29876  # 本机 ez-mc 守护地址（先运行 ezmc daemon）
+auto-host: true             # 服务端启动时自动确保房主节点在线
+shutdown-stop: false        # 服务端关闭时是否停止 P2P 节点（true=拆房）
+broadcast-on-start: true    # 启动后向在线玩家广播联机地址
