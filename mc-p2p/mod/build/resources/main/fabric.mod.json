@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "ezp",
+  "version": "1.0.0",
+  "name": "Ezp P2P Mod",
+  "description": "基于 ez-mc / EasyTier 的 Minecraft P2P 一键加入客户端 Mod",
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "io.ezp.mod.EzpClient"
+    ]
+  },
+  "mixins": [
+    "ezp.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
