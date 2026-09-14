@@ -3,18 +3,20 @@
 击杀敌对生物完成任务,奖励是你的 **AI 猫猫宠物**(会跟随主人的立牌宠物,贴图由 AI 生成)。
 
 ## 支持环境
-- Minecraft **1.21.4** / Fabric Loader ≥ 0.16 / Fabric API
-- Java 21 + Gradle(**Loom 需要 Gradle 9.x**,与 `mc-p2p/mod` 同一套工具链)
+- Minecraft **26.2** / Fabric Loader **0.19.5** / Fabric API **0.160.0+26.2**
+- Java **25** + Gradle **9.5**(Loom `1.17-SNAPSHOT`)
+- 使用 **Mojang 官方映射**(MC 26.1+ 未混淆,无 yarn),客户端代码放 `src/client`
+- 构建产物已把 main + client 合并打进一个 jar
 
 ## 构建
 ```bash
-# 在你自己的机器上(已有 gradle 9.x + JDK21)
+# 在你自己的机器上(需要 JDK25 + Gradle 9.5)
 cd petquest
-/opt/gradle-9.5.0/bin/gradle build -x test   # 或直接 gradle build -x test
+/opt/gradle-9.5.0/bin/gradle build   # 或直接 gradle build
 ```
 产物:`build/libs/petquest-1.0.0.jar`,放到客户端或服务端 `mods/`。
 
-> 若默认 JDK 不是 21,在 `gradle.properties` 取消注释并指向你的 JDK21 路径。
+> 若默认 JDK 不是 25,在 `gradle.properties` 里把 `org.gradle.java.home` 改成你的 JDK25 路径。
 
 ## 功能
 | 命令 | 说明 |

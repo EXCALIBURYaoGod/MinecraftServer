@@ -6,90 +6,92 @@ import io.petquest.entity.PetEntity;
 import io.petquest.quest.Quest;
 import io.petquest.quest.QuestManager;
 import io.petquest.quest.QuestRegistry;
-import net.minecraft.command.CommandRegistryAccess;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.phys.Vec3;
 
-import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-import static net.minecraft.server.command.CommandManager.literal;
+import static net.minecraft.commands.Commands.literal;
 
 /**
  * /petquest 命令组：
  * - /petquest tasks      列出所有任务与我的进度
  * - /petquest progress   查看自己每个任务当前进度
- * - /petquest spawnpet   立刻在面前生成一只宠物猫（0/1/2 指定花色）
+ * - /petquest spawnpet [variant]   立即在面前生成一只宠物猫（0/1/2 指定花色）
  */
 public final class PetQuestCommands {
 
     private PetQuestCommands() {
     }
 
-    public static void register(CommandDispatcher<ServerCommandSource> dispatcher, CommandRegistryAccess registryAccess) {
+    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(literal("petquest")
                 .then(literal("tasks").executes(ctx -> listTasks(ctx.getSource())))
                 .then(literal("progress").executes(ctx -> progress(ctx.getSource())))
                 .then(literal("spawnpet")
                         .executes(ctx -> spawnPet(ctx.getSource(), -1))
-                        .then(CommandManager.argument("variant", IntegerArgumentType.integer(0, 2))
-                                .executes(ctx -> spawnPet(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "variant"))))));
+                        .then(Commands.argument("variant", IntegerArgumentType.integer(0, 2))
+                                .executes(ctx -> spawnPet(ctx.getSource(),
+                                        IntegerArgumentType.getInteger(ctx, "variant"))))));
     }
 
-    private static int listTasks(ServerCommandSource source) {
-        ServerPlayerEntity player = source.getPlayer();
-        if (player == null) return 0;
-        UUID id = player.getUuid();
-        source.sendFeedback(() -> Text.literal("§e—— 猫宠任务列表 ——"), false);
-        for (Quest q : QuestRegistry.QUESTS) {
-            int cur = QuestManager.getProgress(id, q);
-            boolean done = QuestManager.isComplete(id, q);
-            String state = done ? "§a✔ 已完成" : "§7" + cur + "/" + q.target;
-            source.sendFeedback(() -> Text.literal("§f[" + q.id + "] §r" + q.title
-                    + " — " + q.description + "  §8(§r" + state + "§8)"), false);
+    private static int listTasks(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("§c该命令仅玩家可用"));
+            return 0;
         }
-        source.sendFeedback(() -> Text.literal("§7奖励：完成任意任务，获得一只随机的 AI 猫猫宠物"), false);
+        source.sendSystemMessage(Component.literal("§e======== 宠物任务任务书 ========"));
+        for (Quest q : QuestRegistry.QUESTS) {
+            int cur = QuestManager.getProgress(player.getUUID(), q);
+            boolean done = QuestManager.isComplete(player.getUUID(), q);
+            String status = done ? "§a✔ 已完成" : "§7(" + cur + "/" + q.target + ")";
+            source.sendSystemMessage(Component.literal("§r" + status + "  §f" + q.title));
+            source.sendSystemMessage(Component.literal("§7      " + q.description));
+        }
+        source.sendSystemMessage(Component.literal("§e================================"));
         return 1;
     }
 
-    private static int progress(ServerCommandSource source) {
-        ServerPlayerEntity player = source.getPlayer();
-        if (player == null) return 0;
-        UUID id = player.getUuid();
+    private static int progress(CommandSourceStack source) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("§c该命令仅玩家可用"));
+            return 0;
+        }
+        source.sendSystemMessage(Component.literal("§e我的任务进度："));
         for (Quest q : QuestRegistry.QUESTS) {
-            int cur = QuestManager.getProgress(id, q);
-            String bar = bar(cur, q.target);
-            source.sendFeedback(() -> Text.literal("§f" + q.title + " §7" + cur + "/" + q.target
-                    + "  " + bar), false);
+            int cur = QuestManager.getProgress(player.getUUID(), q);
+            boolean done = QuestManager.isComplete(player.getUUID(), q);
+            String line = done ? "§a✔ " + q.title : "§7" + q.title + " (" + cur + "/" + q.target + ")";
+            source.sendSystemMessage(Component.literal(line));
         }
         return 1;
     }
 
-    private static int spawnPet(ServerCommandSource source, int variant) {
-        ServerPlayerEntity player = source.getPlayer();
-        if (player == null) return 0;
-        ServerWorld world = player.getServerWorld();
-        PetEntity pet = PetEntity.TYPE.create(world);
-        if (pet == null) return 0;
-        Vec3d pos = player.getEyePos();
-        pet.refreshPositionAndAngles(pos.x, pos.y, pos.z, player.getYaw(), 0.0f);
-        pet.setOwner(player.getUuid());
+    private static int spawnPet(CommandSourceStack source, int variant) {
+        ServerPlayer player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("§c该命令仅玩家可用"));
+            return 0;
+        }
+        ServerLevel world = source.getLevel();
+        PetEntity pet = PetEntity.TYPE.create(world, EntitySpawnReason.COMMAND);
+        if (pet == null) {
+            source.sendFailure(Component.literal("§c生成宠物失败"));
+            return 0;
+        }
+        Vec3 pos = player.position();
+        pet.teleportTo(pos.x, pos.y + 0.5, pos.z);
+        pet.setOwner(player.getUUID());
         pet.setVariant(variant < 0 ? ThreadLocalRandom.current().nextInt(3) : variant);
-        world.spawnEntity(pet);
-        source.sendFeedback(() -> Text.literal("§e一只猫猫宠物已经来到你身边 🐱"), false);
+        world.addFreshEntity(pet);
+        source.sendSuccess(() -> Component.literal("§a宠物猫来啦！"), true);
         return 1;
-    }
-
-    private static String bar(int cur, int target) {
-        int full = (int) Math.round(10.0 * cur / target);
-        StringBuilder sb = new StringBuilder("§a");
-        for (int i = 0; i < 10; i++) {
-            sb.append(i < full ? "█" : "§7░");
-        }
-        return sb.toString();
     }
 }

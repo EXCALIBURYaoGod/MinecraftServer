@@ -5,31 +5,36 @@ import io.petquest.entity.PetEntity;
 import io.petquest.quest.QuestManager;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.fabricmc.fabric.api.event.living.v1.ServerLivingEntityEvents;
-import net.minecraft.entity.mob.Monster;
-import net.minecraft.server.network.ServerPlayerEntity;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.LivingEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * 服务端主入口：注册实体属性、监听击杀事件、注册 /petquest 命令。
+ */
 public class PetQuestMod implements ModInitializer {
-    public static final String MOD_ID = "petquest";
-    public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+
+    public static final Logger LOGGER = LoggerFactory.getLogger("petquest");
 
     @Override
     public void onInitialize() {
-        LOGGER.info("PetQuest 加载完成：猫宠任务系统已启用");
-
-        // 注册宠物实体与属性
         PetEntity.register();
 
-        // 注册命令
-        CommandRegistrationCallback.EVENT.register(PetQuestCommands::register);
+        ServerLivingEntityEvents.AFTER_DEATH.register(PetQuestMod::onAfterDeath);
+        CommandRegistrationCallback.EVENT.register(
+                (dispatcher, registryAccess, selection) -> PetQuestCommands.register(dispatcher));
+    }
 
-        // 击杀敌对生物 → 推进任务进度
-        ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
-            if (entity instanceof Monster && source.getAttacker() instanceof ServerPlayerEntity player) {
-                QuestManager.onKill(player);
-            }
-        });
+    /** 玩家每击杀一只生物，就推进一次任务进度。 */
+    private static void onAfterDeath(LivingEntity killed, DamageSource source) {
+        if (killed.level().isClientSide()) {
+            return;
+        }
+        if (source.getEntity() instanceof ServerPlayer player) {
+            QuestManager.onKill(player);
+        }
     }
 }

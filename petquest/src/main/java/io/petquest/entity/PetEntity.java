@@ -1,132 +1,136 @@
 package io.petquest.entity;
 
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.SpawnGroup;
-import net.minecraft.entity.attribute.DefaultAttributeContainer;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.entity.data.TrackedData;
-import net.minecraft.entity.data.TrackedDataHandlerRegistry;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.mob.PathAwareEntity;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.Identifier;
-import net.minecraft.world.World;
+import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 
 import java.util.Optional;
 import java.util.UUID;
 
 /**
- * 自定义宠物实体。
+ * 自定义宠物实体（MC 26.2 / Mojang 官方映射）。
  *
- * 一个会被主人跟随的被动实体：当主人走远时自动传送到身边，近距离时小步跟过来。
- * 造型皮肤通过 {@link #VARIANT} 数据位在客户端选择对应的 AI 猫猫图片贴图。
+ * 一个会跟随主人的被动实体：主人在线时若走远则自动传送回身边，近距离小步跟来。
+ * 皮肤通过 {@link #VARIANT} 数据位在客户端选择对应的 AI 猫猫贴图。
+ * 主人以 {@link #ownerUuid} 字段记录并写进存档，重启/卸载重载后依然跟随。
  */
-public class PetEntity extends PathAwareEntity {
+public class PetEntity extends PathfinderMob {
 
-    private static final TrackedData<Optional<UUID>> OWNER =
-            DataTracker.registerData(PetEntity.class, TrackedDataHandlerRegistry.OPTIONAL_UUID);
-    private static final TrackedData<Integer> VARIANT =
-            DataTracker.registerData(PetEntity.class, TrackedDataHandlerRegistry.INTEGER);
+    private static final EntityDataAccessor<Integer> VARIANT =
+            SynchedEntityData.defineId(PetEntity.class, EntityDataSerializers.INT);
 
     private static final float TELEPORT_DISTANCE = 20.0f; // 超过此距离直接传送
     private static final float FOLLOW_RADIUS = 3.5f;       // 到达这个距离就停下来
     private static final float START_FOLLOW_DISTANCE = 10.0f;
 
+    private static final ResourceKey<EntityType<?>> PET_KEY =
+            ResourceKey.create(Registries.ENTITY_TYPE, Identifier.fromNamespaceAndPath("petquest", "pet"));
+
+    /** 宠物实体类型：以 Mojang 官方命名注册进内置实体注册表。 */
     public static final EntityType<PetEntity> TYPE = Registry.register(
-            Registries.ENTITY_TYPE,
-            Identifier.of("petquest", "pet"),
-            EntityType.Builder.create(PetEntity::new, SpawnGroup.CREATURE)
-                    .setDimensions(0.6f, 1.2f)
-                    .maxTrackingRange(16)
-                    .build()
+            BuiltInRegistries.ENTITY_TYPE,
+            PET_KEY,
+            EntityType.Builder.of(PetEntity::new, MobCategory.CREATURE)
+                    .sized(0.6f, 1.2f)
+                    .clientTrackingRange(16)
+                    .build(PET_KEY)
     );
 
-    public PetEntity(EntityType<? extends PetEntity> type, World world) {
-        super(type, world);
-        setPersistent(); // 不自然消失
+    private UUID ownerUuid;
+
+    public PetEntity(EntityType<? extends PetEntity> type, Level level) {
+        super(type, level);
+        setPersistenceRequired(); // 不自然消失
     }
 
+    /** 注册实体默认属性（由 Fabric 提供挂接）。 */
     public static void register() {
-        FabricDefaultAttributeRegistry.register(TYPE, PetEntity::createPetAttributes);
+        FabricDefaultAttributeRegistry.register(TYPE, createPetAttributes());
     }
 
-    public static DefaultAttributeContainer createPetAttributes() {
-        return MobEntity.createMobAttributes()
-                .add(EntityAttributes.GENERIC_MAX_HEALTH, 20.0)
-                .add(EntityAttributes.GENERIC_MOVEMENT_SPEED, 0.32)
+    public static AttributeSupplier createPetAttributes() {
+        return Mob.createMobAttributes()
+                .add(Attributes.MAX_HEALTH, 20.0)
+                .add(Attributes.MOVEMENT_SPEED, 0.32)
                 .build();
     }
 
     @Override
-    protected void initDataTracker() {
-        super.initDataTracker();
-        this.dataTracker.startTracking(OWNER, Optional.empty());
-        this.dataTracker.startTracking(VARIANT, 0);
+    protected void defineSynchedData(SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(VARIANT, 0);
     }
 
     @Override
-    protected void initGoals() {
-        this.goalSelector.add(0, new PetFollowOwnerGoal(this, 1.0,
+    protected void registerGoals() {
+        this.goalSelector.addGoal(0, new PetFollowOwnerGoal(this, 1.0,
                 START_FOLLOW_DISTANCE, FOLLOW_RADIUS, TELEPORT_DISTANCE));
-    }
-
-    @Override
-    public boolean canImmediatelyDespawn(double distanceToClosestPlayer) {
-        return false;
     }
 
     // ---- 主人 ----
 
     public void setOwner(UUID owner) {
-        this.dataTracker.set(OWNER, Optional.ofNullable(owner));
+        this.ownerUuid = owner;
     }
 
     public Optional<UUID> getOwnerUuid() {
-        return this.dataTracker.get(OWNER);
+        return Optional.ofNullable(this.ownerUuid);
     }
 
-    /** 主人在线则返回其玩家，否则 null（离线时宠物留在原地）。 */
-    public ServerPlayerEntity getOwnerPlayer() {
-        UUID uuid = getOwnerUuid().orElse(null);
-        if (uuid == null || !this.getWorld().isClient) {
-            return uuid == null ? null : ((ServerWorld) this.getWorld()).getServer().getPlayerManager().getPlayer(uuid);
+    /** 主人在线则返回其玩家，否则返回 null（离线时宠物留在原地）。 */
+    public ServerPlayer getOwnerPlayer() {
+        UUID uuid = this.ownerUuid;
+        if (uuid == null || this.level().isClientSide() || !(this.level() instanceof ServerLevel serverLevel)) {
+            return null;
         }
-        return null;
+        return serverLevel.getServer().getPlayerList().getPlayer(uuid);
     }
 
     // ---- 变体（选用哪张猫猫贴图） ----
 
     public void setVariant(int variant) {
-        this.dataTracker.set(VARIANT, Math.floorMod(variant, 3));
+        this.entityData.set(VARIANT, Math.floorMod(variant, 3));
     }
 
     public int getVariant() {
-        return this.dataTracker.get(VARIANT);
+        return this.entityData.get(VARIANT);
     }
 
-    // ---- 存档 ----
+    // ---- 存档（MC 26.2 的 ValueInput / ValueOutput 值存储） ----
 
     @Override
-    public void writeCustomDataToNbt(NbtCompound nbt) {
-        super.writeCustomDataToNbt(nbt);
-        getOwnerUuid().ifPresent(uuid -> nbt.putUuid("Owner", uuid));
-        nbt.putInt("Variant", getVariant());
+    protected void addAdditionalSaveData(ValueOutput out) {
+        super.addAdditionalSaveData(out);
+        if (this.ownerUuid != null) {
+            out.putString("Owner", this.ownerUuid.toString());
+        }
+        out.putInt("Variant", getVariant());
     }
 
     @Override
-    public void readCustomDataFromNbt(NbtCompound nbt) {
-        super.readCustomDataFromNbt(nbt);
-        if (nbt.containsUuid("Owner")) {
-            setOwner(nbt.getUuid("Owner"));
+    protected void readAdditionalSaveData(ValueInput in) {
+        super.readAdditionalSaveData(in);
+        String owner = in.getStringOr("Owner", "");
+        if (!owner.isEmpty()) {
+            setOwner(UUID.fromString(owner));
         }
-        if (nbt.contains("Variant")) {
-            setVariant(nbt.getInt("Variant"));
-        }
+        setVariant(in.getIntOr("Variant", 0));
     }
 }

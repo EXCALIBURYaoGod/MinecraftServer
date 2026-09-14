@@ -5,10 +5,11 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import io.petquest.entity.PetEntity;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -96,9 +97,9 @@ public final class QuestManager {
     }
 
     /** 玩家击杀一只敌对生物时触发。 */
-    public static void onKill(ServerPlayerEntity player) {
+    public static void onKill(ServerPlayer player) {
         loadIfNeeded();
-        UUID id = player.getUuid();
+        UUID id = player.getUUID();
         Map<Integer, Integer> mine = progress.computeIfAbsent(id, k -> new LinkedHashMap<>());
 
         for (Quest q : QuestRegistry.QUESTS) {
@@ -115,24 +116,24 @@ public final class QuestManager {
         save();
     }
 
-    private static void reward(ServerPlayerEntity player, Quest q) {
-        ServerWorld world = player.getServerWorld();
+    private static void reward(ServerPlayer player, Quest q) {
+        ServerLevel world = player.level();
         int variant = ThreadLocalRandom.current().nextInt(CAT_NAMES.length);
-        PetEntity pet = PetEntity.TYPE.create(world);
+        PetEntity pet = PetEntity.TYPE.create(world, EntitySpawnReason.MOB_SUMMONED);
         if (pet == null) {
             return;
         }
-        Vec3d pos = player.getPos();
-        pet.refreshPositionAndAngles(
+        Vec3 pos = player.position();
+        pet.teleportTo(
                 pos.x + ThreadLocalRandom.current().nextDouble(-1.0, 1.0),
                 pos.y + 0.5,
-                pos.z + ThreadLocalRandom.current().nextDouble(-1.0, 1.0),
-                player.getYaw(), 0.0f);
-        pet.setOwner(player.getUuid());
+                pos.z + ThreadLocalRandom.current().nextDouble(-1.0, 1.0));
+        pet.setYRot(player.getYRot());
+        pet.setOwner(player.getUUID());
         pet.setVariant(variant);
-        world.spawnEntity(pet);
+        world.addFreshEntity(pet);
 
-        player.sendMessage(Text.literal("§a✔ 任务「§r§l" + q.title + "§r§a」完成！"));
-        player.sendMessage(Text.literal("§e宠物猫来到你身边：§r" + CAT_NAMES[variant]));
+        player.sendSystemMessage(Component.literal("§a✔ 任务「§r§l" + q.title + "§r§a」完成！"));
+        player.sendSystemMessage(Component.literal("§e宠物猫来到你身边：§r" + CAT_NAMES[variant]));
     }
 }

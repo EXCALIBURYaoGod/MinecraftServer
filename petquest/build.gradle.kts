@@ -1,6 +1,6 @@
 plugins {
-    id("fabric-loom") version "1.17.20"
-    id("java")
+    id("net.fabricmc.fabric-loom") version "1.17-SNAPSHOT"
+    java
 }
 
 group = "io.petquest"
@@ -10,27 +10,31 @@ base {
     archivesName.set("petquest")
 }
 
-repositories {
-    mavenCentral()
-    maven("https://maven.fabricmc.net/")
+// MC 26.1+ 为未混淆版本，直接使用 Mojang 官方命名
+loom {
+    splitEnvironmentSourceSets()
+    mods {
+        create("petquest") {
+            sourceSet("main")
+            sourceSet("client")
+        }
+    }
 }
 
 dependencies {
-    minecraft("com.mojang:minecraft:1.21.4")
-    mappings("net.fabricmc:yarn:1.21.4+build.8:v2")
-    modImplementation("net.fabricmc:fabric-loader:0.19.5")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:0.119.4+1.21.4")
+    minecraft("com.mojang:minecraft:26.2")
+    implementation("net.fabricmc:fabric-loader:0.19.5")
+    implementation("net.fabricmc.fabric-api:fabric-api:0.160.0+26.2")
 }
 
 java {
     withSourcesJar()
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
 }
 
-tasks.processResources {
-    inputs.property("version", project.version)
-    filesMatching("fabric.mod.json") {
-        expand("version" to project.version)
-    }
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(25)
 }
+
+tasks.jar {}
