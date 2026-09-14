@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "petquest",
+  "version": "${version}",
+  "name": "PetQuest - 猫宠任务系统",
+  "description": "带奖励的任务系统：击杀怪物完成任务，获得跟随你的 AI 猫猫宠物",
+  "license": "MIT",
+  "authors": ["PetQuest"],
+  "entrypoints": {
+    "main": [
+      "io.petquest.PetQuestMod"
+    ],
+    "client": [
+      "io.petquest.PetQuestClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
